@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copity - website scraper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        input[type="url"] {
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button[type="submit"] {
+            padding: 10px;
+            background: #333;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        button[type="submit"]:hover:not(:disabled) {
+            background: #555;
+        }
+        button[type="submit"]:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .message {
+            margin-top: 20px;
+            padding: 10px;
+            background: #e8e8e8;
+            border-radius: 4px;
+            white-space: pre-line;
+        }
+        #progress {
+            margin-top: 20px;
+            display: none;
+        }
+        #progress h3 {
+            margin-bottom: 5px;
+        }
+        #progress ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #progress li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Website Scraper</h1>
+        <form id="scraperForm">
+            <input type="url" name="url" placeholder="Site adresini girin" required>
+            <button type="submit">
+                <div class="spinner"></div>
+                <span>Kaydet</span>
+            </button>
+        </form>
+        <div id="message" class="message" style="display: none;"></div>
+        <div id="progress">
+            <h3>İlerleme:</h3>
+            <ul>
+                <li>İşlenen URL'ler: <span id="processed-urls">0</span></li>
+                <li>İşlenen Dosyalar: <span id="processed-files">0</span></li>
+                <li>Başarısız Kaynaklar: <span id="failed-resources">0</span></li>
+                <li>Hatalar: <span id="errors">0</span></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('scraperForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const form = this;
+            const url = form.elements.url.value;
+            const submitButton = form.querySelector('button[type="submit"]');
+            const spinner = submitButton.querySelector('.spinner');
+            const messageDiv = document.getElementById('message');
+            const progressDiv = document.getElementById('progress');
+
+            submitButton.disabled = true;
+            spinner.style.display = 'inline-block';
+            messageDiv.style.display = 'none';
+            progressDiv.style.display = 'block';
+
+            fetch('website_scraper.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'url=' + encodeURIComponent(url)
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                function readStream() {
+                    return reader.read().then(({ done, value }) => {
+                        if (done) {
+                            return;
+                        }
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\n');
+                        lines.forEach(line => {
+                            if (line.trim() !== '') {
+                                try {
+                                    const data = JSON.parse(line);
+                                    updateProgress(data);
+                                } catch (e) {
+                                    console.error('Error parsing JSON:', e);
+                                }
+                            }
+                        });
+                        return readStream();
+                    });
+                }
+
+                return readStream();
+            })
+            .catch(error => {
+                messageDiv.textContent = 'An error occurred: ' + error.message;
+                messageDiv.style.display = 'block';
+            })
+            .finally(() => {
+                submitButton.disabled = false;
+                spinner.style.display = 'none';
+            });
+        });
+
+        function updateProgress(data) {
+            if (data.type === 'progress' || data.type === 'complete') {
+                document.getElementById('processed-urls').textContent = data.data.processed_urls;
+                document.getElementById('processed-files').textContent = data.data.processed_files;
+                document.getElementById('failed-resources').textContent = data.data.failed_resources;
+                document.getElementById('errors').textContent = data.data.errors.length;
+            }
+            if (data.type === 'complete') {
+                document.getElementById('message').textContent = 'Scraping completed!';
+                document.getElementById('message').style.display = 'block';
+            }
+            if (data.type === 'error') {
+                document.getElementById('message').textContent = 'Error: ' + data.data;
+                document.getElementById('message').style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
+
